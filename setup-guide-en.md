@@ -10,6 +10,7 @@ Before installing Claude Code, you need an active Claude subscription.
 
 1. Go to [claude.ai](https://claude.ai) and create an account (or sign in)
 2. Subscribe to the **Claude Pro** plan ($20/month)
+   - You can cancel the subscription after the course.
    - Pro gives you solid usage for learning and daily work
    - No need to buy the Max plan at this stage
 3. Claude Code uses your subscription directly — no separate API billing needed
