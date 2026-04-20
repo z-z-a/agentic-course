@@ -1,0 +1,15 @@
+@import "../styles/globals.css";
+
+@layer base {
+  :root {
+    font-family: "Amazon Ember", Arial, sans-serif;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background-color: #EAEDED;
+    color: #0F1111;
+  }
+}
