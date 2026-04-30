@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Custom Commands in Claude Code</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --accent:    #f78166;
+    --accent2:   #79c0ff;
+    --accent3:   #56d364;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --code-bg:   #1f2937;
+    --tag-bg:    #21262d;
+    --radius:    10px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Progress bar ── */
+  #progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.4s ease;
+    z-index: 100;
+  }
+
+  /* ── Slide container ── */
+  #deck {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 60px;
+    overflow: hidden;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    max-width: 900px;
+    animation: fadeIn 0.35s ease;
+  }
+  .slide.active { display: flex; flex-direction: column; gap: 22px; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Typography ── */
+  h1 { font-size: 2.6rem; font-weight: 700; line-height: 1.2; }
+  h2 { font-size: 1.7rem; font-weight: 600; color: var(--accent2); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  h3 { font-size: 1.1rem; font-weight: 600; color: var(--accent); margin-top: 4px; }
+  p, li { font-size: 1.05rem; line-height: 1.65; color: var(--text); }
+  strong { color: var(--accent2); font-weight: 600; }
+  em { color: var(--accent3); font-style: normal; font-weight: 500; }
+  ul, ol { padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
+  blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 10px 16px;
+    background: var(--tag-bg);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Code ── */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+    background: var(--tag-bg);
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  pre code {
+    background: none;
+    color: var(--text);
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* syntax colouring inside <pre> */
+  .kw  { color: #ff7b72; }   /* keywords / punctuation */
+  .st  { color: #a5d6ff; }   /* strings */
+  .cm  { color: #6e7681; font-style: italic; } /* comments / arrows */
+  .fn  { color: #d2a8ff; }   /* filenames / keys */
+  .nu  { color: #79c0ff; }   /* numbers / json values */
+  .op  { color: #56d364; }   /* operators / arrows → */
+  .dir { color: #ffa657; }   /* directory names */
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th {
+    background: var(--tag-bg);
+    color: var(--accent2);
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--tag-bg); }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li::before { content: "☐ "; color: var(--accent2); font-weight: bold; }
+
+  /* ── Tag / badge ── */
+  .badge {
+    display: inline-block;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 2px;
+  }
+  .badge.green  { border-color: var(--accent3); color: var(--accent3); }
+  .badge.blue   { border-color: var(--accent2); color: var(--accent2); }
+  .badge.orange { border-color: #ffa657; color: #ffa657; }
+
+  /* ── Subsystem cards (slide 2) ── */
+  .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .card .icon { font-size: 1.6rem; margin-bottom: 6px; }
+  .card .label { font-size: 0.82rem; color: var(--accent2); font-weight: 600; margin-bottom: 4px; }
+  .card .sub   { font-size: 0.75rem; color: var(--muted); }
+
+  /* ── Title slide ── */
+  .title-slide { text-align: center; gap: 18px !important; }
+  .title-slide h1 { font-size: 3rem; }
+  .title-slide .subtitle { color: var(--muted); font-size: 1.1rem; }
+  .title-slide .author   { color: var(--accent); font-size: 0.95rem; margin-top: 8px; }
+  .pill {
+    display: inline-block;
+    background: linear-gradient(135deg, #1f2937, #161b22);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 20px;
+    font-size: 0.9rem;
+    color: var(--accent2);
+    margin-top: 4px;
+  }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  /* ── Nav bar ── */
+  #nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 14px 40px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  button {
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 22px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  button:hover  { background: var(--border); border-color: var(--muted); }
+  button:disabled { opacity: 0.3; cursor: default; }
+  #counter { color: var(--muted); font-size: 0.9rem; min-width: 70px; text-align: center; }
+
+  /* ── Hint ── */
+  #hint {
+    position: fixed;
+    bottom: 70px; right: 24px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<div id="deck">
+
+  <!-- SLIDE 1 — Title -->
+  <section class="slide active title-slide">
+    <div style="font-size:3rem;">⚡</div>
+    <h1>Custom Commands<br>in Claude Code</h1>
+    <p class="subtitle">How to automate your workflows using the <code>.claude/</code> folder</p>
+    <div><span class="pill">Claude Code · 2026</span></div>
+    <p class="author">Agentic Course</p>
+  </section>
+
+  <!-- SLIDE 2 — What is .claude? -->
+  <section class="slide">
+    <h2>What is the <code>.claude/</code> Folder?</h2>
+    <ul>
+      <li>A config directory in your <strong>project root</strong> — or <em>~/.claude/</em> for global settings</li>
+      <li>Claude reads it <strong>automatically</strong> at the start of every session</li>
+      <li>Commit it to git — your whole team benefits</li>
+    </ul>
+    <p style="color:var(--muted); font-size:0.9rem; margin-top:4px;">Controls 5 distinct subsystems:</p>
+    <div class="cards">
+      <div class="card">
+        <div class="icon">📄</div>
+        <div class="label">Instructions</div>
+        <div class="sub">CLAUDE.md<br>rules/</div>
+      </div>
+      <div class="card">
+        <div class="icon">⚙️</div>
+        <div class="label">Workflows</div>
+        <div class="sub">commands/<br>skills/</div>
+      </div>
+      <div class="card">
+        <div class="icon">🤖</div>
+        <div class="label">Specialists</div>
+        <div class="sub">agents/</div>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <div class="label">Permissions</div>
+        <div class="sub">settings.json</div>
+      </div>
+      <div class="card">
+        <div class="icon">🧠</div>
+        <div class="label">Memory</div>
+        <div class="sub">~/.claude/<br>memory/</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 3 — Folder Structure -->
+  <section class="slide">
+    <h2>Full Folder Structure</h2>
+    <pre><code><span class="dir">.claude/</span>
+├── <span class="fn">CLAUDE.md</span>            <span class="cm">← team instructions (committed to git)</span>
+├── <span class="fn">CLAUDE.local.md</span>      <span class="cm">← personal overrides (gitignored)</span>
+├── <span class="fn">settings.json</span>        <span class="cm">← permissions &amp; config (committed)</span>
+├── <span class="fn">settings.local.json</span>  <span class="cm">← personal overrides (gitignored)</span>
+├── <span class="dir">commands/</span>            <span class="cm">← custom slash commands</span>
+│   ├── <span class="fn">review.md</span>        <span class="op">→  /review</span>
+│   └── <span class="fn">standup.md</span>       <span class="op">→  /standup</span>
+├── <span class="dir">skills/</span>              <span class="cm">← modern workflow packages</span>
+├── <span class="dir">rules/</span>               <span class="cm">← modular instruction files</span>
+└── <span class="dir">agents/</span>              <span class="cm">← specialist subagent personas</span>
+
+<span class="dir">~/.claude/</span>           <span class="cm">← global (all projects)</span>
+├── <span class="fn">CLAUDE.md</span>            <span class="cm">← your personal global preferences</span>
+└── <span class="dir">commands/</span>
+    └── <span class="fn">daily-summary.md</span> <span class="op">→  /daily-summary</span></code></pre>
+  </section>
+
+  <!-- SLIDE 4 — CLAUDE.md -->
+  <section class="slide">
+    <h2>CLAUDE.md — The Instruction File</h2>
+    <ul>
+      <li>Always loaded into Claude's context at session start</li>
+      <li><strong>Project</strong> <code>CLAUDE.md</code> → team conventions, tech stack, rules</li>
+      <li><strong>Global</strong> <code>~/.claude/CLAUDE.md</code> → your personal defaults</li>
+      <li><code>CLAUDE.local.md</code> → personal project overrides <em>(gitignored)</em></li>
+    </ul>
+    <h3>Example content</h3>
+    <pre><code><span class="kw"># My Project</span>
+<span class="cm">## Stack</span>
+<span class="st">- Next.js, TypeScript, Postgres</span>
+
+<span class="cm">## Rules</span>
+<span class="st">- Always write tests for new functions</span>
+<span class="st">- PR descriptions must include a "Test plan" section</span>
+<span class="st">- Never use `console.log` — use the logger utility</span></code></pre>
+    <blockquote>Think of it as your team's onboarding doc — written once, read by Claude every time.</blockquote>
+  </section>
+
+  <!-- SLIDE 5 — settings.json -->
+  <section class="slide">
+    <h2>settings.json — Permissions &amp; Config</h2>
+    <ul>
+      <li>Controls what Claude can do <strong>without asking</strong></li>
+      <li>Committed to git → shared with the whole team</li>
+      <li><code>settings.local.json</code> for personal overrides (gitignored)</li>
+    </ul>
+    <pre><code><span class="nu">{</span>
+  <span class="fn">"model"</span>: <span class="st">"claude-sonnet-4-6"</span>,
+  <span class="fn">"permissions"</span>: <span class="nu">{</span>
+    <span class="fn">"allow"</span>: [<span class="st">"Bash(git *)"</span>, <span class="st">"Bash(npm test)"</span>, <span class="st">"Read"</span>],
+    <span class="fn">"deny"</span>:  [<span class="st">"Bash(rm -rf *)"</span>]
+  <span class="nu">}</span>,
+  <span class="fn">"env"</span>: <span class="nu">{</span>
+    <span class="fn">"NODE_ENV"</span>: <span class="st">"development"</span>
+  <span class="nu">}</span>,
+  <span class="fn">"hooks"</span>: <span class="nu">{</span>
+    <span class="fn">"PostToolUse"</span>: [<span class="st">"echo 'tool finished'"</span>]
+  <span class="nu">}</span>
+<span class="nu">}</span></code></pre>
+  </section>
+
+  <!-- SLIDE 6 — Commands basics -->
+  <section class="slide">
+    <h2>Custom Commands — The Basics</h2>
+    <div class="two-col">
+      <div>
+        <h3>How it works</h3>
+        <ul style="margin-top:10px;">
+          <li>Create a <code>.md</code> file in <code>.claude/commands/</code></li>
+          <li>The <strong>filename</strong> → the slash command name</li>
+          <li>The <strong>file content</strong> → the prompt Claude runs</li>
+        </ul>
+        <pre style="margin-top:14px;"><code><span class="fn">review.md</span>   <span class="op">→  /review</span>
+<span class="fn">standup.md</span>  <span class="op">→  /standup</span>
+<span class="fn">deploy.md</span>   <span class="op">→  /deploy</span></code></pre>
+      </div>
+      <div>
+        <h3>Two scopes</h3>
+        <table style="margin-top:10px;">
+          <thead>
+            <tr><th>Scope</th><th>Path</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge blue">Project</span></td>
+              <td><code>.claude/commands/</code></td>
+            </tr>
+            <tr>
+              <td><span class="badge green">Personal</span></td>
+              <td><code>~/.claude/commands/</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="margin-top:14px; font-size:0.9rem; color:var(--muted);">Personal commands are available in <em>every</em> project on your machine.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 7 — First command -->
+  <section class="slide">
+    <h2>Writing Your First Custom Command</h2>
+    <div class="two-col">
+      <div>
+        <h3>.claude/commands/standup.md</h3>
+        <pre style="margin-top:8px;"><code><span class="st">Look at my git log for the last 24 hours</span>
+<span class="st">and write a standup update.</span>
+
+<span class="cm">Format:</span>
+<span class="st">- What I did yesterday</span>
+<span class="st">- What I'm doing today</span>
+<span class="st">- Any blockers</span>
+
+<span class="st">Keep it under 5 bullet points total.</span></code></pre>
+        <p style="margin-top:10px; font-size:0.9rem;">Usage: type <code>/standup</code> in any session</p>
+      </div>
+      <div>
+        <h3>.claude/commands/explain-pr.md</h3>
+        <pre style="margin-top:8px;"><code><span class="st">Read the current git diff against main</span>
+<span class="st">and write a pull request description.</span>
+
+<span class="cm">Sections to include:</span>
+<span class="st">1. Summary</span>
+<span class="st">2. Changes Made</span>
+<span class="st">3. Test Plan</span>
+
+<span class="st">Be concise and use bullet points.</span></code></pre>
+        <p style="margin-top:10px; font-size:0.9rem;">Usage: type <code>/explain-pr</code> in any session</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 8 — Subdirectories -->
+  <section class="slide">
+    <h2>Organizing Commands in Subdirectories</h2>
+    <p>Commands can be nested — the path becomes part of the display name in the <code>/</code> menu:</p>
+    <pre><code><span class="dir">.claude/commands/</span>
+├── <span class="dir">frontend/</span>
+│   ├── <span class="fn">component.md</span>   <span class="op">→  /component</span>   <span class="cm">(tagged "project:frontend")</span>
+│   └── <span class="fn">storybook.md</span>   <span class="op">→  /storybook</span>   <span class="cm">(tagged "project:frontend")</span>
+├── <span class="dir">backend/</span>
+│   ├── <span class="fn">api-test.md</span>    <span class="op">→  /api-test</span>    <span class="cm">(tagged "project:backend")</span>
+│   └── <span class="fn">migration.md</span>   <span class="op">→  /migration</span>   <span class="cm">(tagged "project:backend")</span>
+└── <span class="fn">deploy-check.md</span>    <span class="op">→  /deploy-check</span></code></pre>
+    <blockquote>Useful for large monorepos — keeps commands discoverable without polluting a flat list.</blockquote>
+  </section>
+
+  <!-- SLIDE 9 — Skills -->
+  <section class="slide">
+    <h2>Skills — The Modern Evolution</h2>
+    <p style="margin-bottom:4px;">Skills are the 2026 replacement for <code>commands/</code> — same slash invocation, more power:</p>
+    <table>
+      <thead>
+        <tr><th>Feature</th><th><code>commands/</code></th><th><code>skills/</code></th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Slash command invocation</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Auto-invocation by Claude</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Frontmatter metadata</td><td>❌</td><td>✅</td></tr>
+        <tr><td>File management support</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Status</td><td><span class="badge orange">legacy</span></td><td><span class="badge green">recommended</span></td></tr>
+      </tbody>
+    </table>
+    <h3 style="margin-top:6px;">.claude/skills/standup/SKILL.md</h3>
+    <pre><code><span class="kw">---</span>
+<span class="fn">name</span>:        <span class="st">standup</span>
+<span class="fn">description</span>: <span class="st">Generate a daily standup from git log</span>
+<span class="fn">trigger</span>:     <span class="st">when user asks for standup or daily update</span>
+<span class="kw">---</span>
+
+<span class="st">Look at my git log for the last 24 hours and write a standup...</span></code></pre>
+  </section>
+
+  <!-- SLIDE 10 — Summary -->
+  <section class="slide">
+    <h2>Summary &amp; Best Practices</h2>
+    <div class="two-col">
+      <div>
+        <h3>Key takeaways</h3>
+        <ol style="margin-top:10px; gap:10px;">
+          <li><code>.claude/</code> is your project's Claude config — <strong>commit it to git</strong></li>
+          <li><code>CLAUDE.md</code> = team instructions; <code>CLAUDE.local.md</code> = personal overrides</li>
+          <li>One <code>.md</code> file = one slash command — keep prompts focused</li>
+          <li>Start with <code>commands/</code>, move to <code>skills/</code> when you need auto-invocation</li>
+          <li><code>~/.claude/commands/</code> for personal commands across all projects</li>
+        </ol>
+      </div>
+      <div>
+        <h3>Getting started checklist</h3>
+        <ul class="checklist" style="margin-top:10px; gap:10px;">
+          <li>Run <code>/init</code> to auto-generate <code>CLAUDE.md</code></li>
+          <li>Add team conventions to <code>CLAUDE.md</code></li>
+          <li>Create 2–3 commands for your most repeated prompts</li>
+          <li>Pre-approve safe Bash commands in <code>settings.json</code></li>
+          <li>Share the <code>.claude/</code> folder with your team via git</li>
+        </ul>
+        <div style="margin-top:16px; font-size:0.82rem; color:var(--muted);">
+          📖 <a href="https://code.claude.com/docs/en/claude-directory" style="color:var(--accent2);">code.claude.com/docs/en/claude-directory</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /deck -->
+
+<!-- Nav -->
+<div id="nav">
+  <button id="btn-prev" onclick="go(-1)" disabled>← Prev</button>
+  <span id="counter">1 / 10</span>
+  <button id="btn-next" onclick="go(1)">Next →</button>
+</div>
+
+<div id="hint">← → arrow keys to navigate</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const counter = document.getElementById('counter');
+  const bar = document.getElementById('progress-bar');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  let cur = 0;
+
+  function show(n) {
+    slides[cur].classList.remove('active');
+    cur = Math.max(0, Math.min(n, slides.length - 1));
+    slides[cur].classList.add('active');
+    counter.textContent = `${cur + 1} / ${slides.length}`;
+    bar.style.width = `${((cur + 1) / slides.length) * 100}%`;
+    btnPrev.disabled = cur === 0;
+    btnNext.disabled = cur === slides.length - 1;
+  }
+
+  function go(dir) { show(cur + dir); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') go(1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp') go(-1);
+  });
+
+  show(0);
+</script>
+</body>
+</html>
